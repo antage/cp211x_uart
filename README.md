@@ -1,11 +1,11 @@
 # cp211x_uart
 
-[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://crates.io/crates/cp211x_uart)
+[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://docs.rs/cp211x_uart)
 
 HID-to-UART driver for CP2110/CP2114 chipset.
 It is wrapper around `hidapi::HidDevice` intrinsically.
 
-See [documentation](https://crates.io/crates/cp211x_uart) for details.
+See [documentation](https://docs.rs/cp211x_uart) for details.
 
 # Usage
 
