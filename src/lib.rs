@@ -1,0 +1,340 @@
+//! HID-to-UART driver for CP2110/CP2114 chipset.
+//!
+//! See more information [here][1].
+//! [1]: https://www.silabs.com/products/interface/usb-bridges/classic-usb-bridges/device.cp2110-f01-gm
+
+extern crate hidapi;
+
+use std::cmp::min;
+use std::default::Default;
+use std::time::{Duration, Instant};
+
+const FEATURE_REPORT_LENGTH: usize = 64;
+const INTERRUPT_REPORT_LENGTH: usize = 64;
+
+const GETSET_UART_ENABLE: u8 = 0x41; // Get Set Receive Status
+const PURGE_FIFOS: u8        = 0x43; // Purge FIFOs
+const GETSET_UART_CONFIG: u8 = 0x50; // Get Set UART Config
+
+const PURGE_TRANSMIT_MASK: u8 = 0x01;
+const PURGE_RECEIVE_MASK: u8  = 0x02;
+
+type Error = hidapi::HidError;
+
+/// The number of data bits in [UART configuration](struct.UartConfig.html).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum DataBits {
+    /// 5 data bits
+    Bits5,
+    /// 6 data bits
+    Bits6,
+    /// 7 data bits
+    Bits7,
+    /// 8 data bits
+    Bits8,
+}
+
+impl Default for DataBits {
+    fn default() -> Self {
+        DataBits::Bits8
+    }
+}
+
+/// The parity in [UART configuration](struct.UartConfig.html).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Parity {
+    /// No parity.
+    None,
+    /// Odd parity (sum of data bits is odd).
+    Odd,
+    /// Even parity (sum of data bits is even).
+    Even,
+    /// Mark parity (always 1).
+    Mark,
+    /// Space parity (always 0).
+    Space,
+}
+
+impl Default for Parity {
+    fn default() -> Self {
+        Parity::None
+    }
+}
+
+/// The number of stop bits in [UART configuration](struct.UartConfig.html).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum StopBits {
+    /// 1 stop bit.
+    Short,
+    /// 5 data bits: 1.5 stop bits, 6-8 data bits: 2 stop bits.
+    Long,
+}
+
+impl Default for StopBits {
+    fn default() -> Self {
+        StopBits::Short
+    }
+}
+
+/// The type of flow control in [UART configuration](struct.UartConfig.html).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum FlowControl {
+    /// No flow control.
+    None,
+    /// RTS/CTS hardware flow control.
+    RtsCts,
+}
+
+impl Default for FlowControl {
+    fn default() -> Self {
+        FlowControl::None
+    }
+}
+
+/// UART configuration.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct UartConfig {
+    pub baud_rate: u32,
+    pub data_bits: DataBits,
+    pub parity: Parity,
+    pub stop_bits: StopBits,
+    pub flow_control: FlowControl,
+}
+
+impl Default for UartConfig {
+    fn default() -> Self {
+        UartConfig {
+            baud_rate: 9600,
+            data_bits: DataBits::default(),
+            parity: Parity::default(),
+            stop_bits: StopBits::default(),
+            flow_control: FlowControl::default(),
+        }
+    }
+}
+
+/// Wrapper around `HidDevice` to provide UART control.
+pub struct HidUart<'a> {
+    device: hidapi::HidDevice<'a>,
+    read_timeout: Duration,
+    write_timeout: Duration,
+}
+
+fn set_uart_enable(device: &hidapi::HidDevice, enable: bool) -> Result<(), Error> {
+    let mut buf: [u8; FEATURE_REPORT_LENGTH] = [0; FEATURE_REPORT_LENGTH];
+
+    buf[0] = GETSET_UART_ENABLE;
+    if enable {
+        buf[1] = 0x01;
+    } else {
+        buf[1] = 0x00;
+    }
+    device.send_feature_report(&buf)
+}
+
+impl<'a> HidUart<'a> {
+    /// Returns a new instance of `HidUart` from `HidDevice`.
+    ///
+    /// The `HidUart` instance enables UART automatically.
+    pub fn new(device: hidapi::HidDevice<'a>) -> Result<HidUart<'a>, Error> {
+        let instance = HidUart {
+            device: device,
+            read_timeout: Duration::from_millis(1000),
+            write_timeout: Duration::from_millis(1000),
+        };
+        instance.enable()?;
+        Ok(instance)
+    }
+
+    /// Returns receiving timeout.
+    pub fn read_timeout(&self) -> Duration {
+        self.read_timeout
+    }
+
+    /// Set receiving timeout to `timeout` value.
+    pub fn set_read_timeout(&mut self, timeout: Duration) {
+        self.read_timeout = timeout;
+    }
+
+    /// Returns transmitting timeout.
+    pub fn write_timeout(&self) -> Duration {
+        self.write_timeout
+    }
+
+    /// Set transmitting timeout to `timeout` value.
+    pub fn set_write_timeout(&mut self, timeout: Duration) {
+        self.write_timeout = timeout;
+    }
+
+    /// Enable UART.
+    pub fn enable(&self) -> Result<(), Error> {
+        set_uart_enable(&self.device, true)
+    }
+
+    /// Disable UART.
+    pub fn disable(&self) -> Result<(), Error> {
+        set_uart_enable(&self.device, false)
+    }
+
+    /// Returns UART state: `true` if UART is enabled, `false` otherwise.
+    pub fn is_enabled(&self) -> Result<bool, Error> {
+        let mut buf: [u8; FEATURE_REPORT_LENGTH] = [0; FEATURE_REPORT_LENGTH];
+
+        buf[0] = GETSET_UART_ENABLE;
+        self.device.get_feature_report(&mut buf)?;
+        if buf[1] == 0x00 {
+            Ok(false)
+        } else {
+            Ok(true)
+        }
+    }
+
+    /// Configures UART.
+    pub fn set_config(&self, config: &UartConfig) -> Result<(), Error> {
+        let mut buf: [u8; FEATURE_REPORT_LENGTH] = [0; FEATURE_REPORT_LENGTH];
+
+        buf[0] = GETSET_UART_CONFIG;
+        buf[1] = ((config.baud_rate >> 24) & 0xFF) as u8;
+        buf[2] = ((config.baud_rate >> 16) & 0xFF) as u8;
+        buf[3] = ((config.baud_rate >> 8) & 0xFF) as u8;
+        buf[4] = (config.baud_rate & 0xFF) as u8;
+        buf[5] =
+            match config.parity {
+                Parity::None => 0x00,
+                Parity::Odd => 0x01,
+                Parity::Even => 0x02,
+                Parity::Mark => 0x03,
+                Parity::Space => 0x04,
+            };
+        buf[6] =
+            match config.flow_control {
+                FlowControl::None => 0x00,
+                FlowControl::RtsCts => 0x01,
+            };
+        buf[7] =
+            match config.data_bits {
+                DataBits::Bits5 => 0x00,
+                DataBits::Bits6 => 0x01,
+                DataBits::Bits7 => 0x02,
+                DataBits::Bits8 => 0x03,
+            };
+        buf[8] =
+            match config.stop_bits {
+                StopBits::Short => 0x00,
+                StopBits::Long => 0x01,
+            };
+
+        self.device.send_feature_report(&buf)?;
+        Ok(())
+    }
+
+    /// Returns current UART configuration.
+    pub fn get_config(&self) -> Result<UartConfig, Error> {
+        let mut buf: [u8; FEATURE_REPORT_LENGTH] = [0; FEATURE_REPORT_LENGTH];
+
+        buf[0] = GETSET_UART_CONFIG;
+        self.device.get_feature_report(&mut buf)?;
+
+        let baud_rate: u32 = (buf[1] as u32) << 24 | (buf[2] as u32) << 16 | (buf[3] as u32) << 8 | buf[4] as u32;
+        let parity =
+            match buf[5] {
+                0x00 => Ok(Parity::None),
+                0x01 => Ok(Parity::Odd),
+                0x02 => Ok(Parity::Even),
+                0x03 => Ok(Parity::Mark),
+                0x04 => Ok(Parity::Space),
+                _ => Err("Unknown parity mode"),
+            }?;
+        let flow_control =
+            match buf[6] {
+                0x00 => Ok(FlowControl::None),
+                0x01 => Ok(FlowControl::RtsCts),
+                _ => Err("Unknown flow control mode"),
+            }?;
+        let data_bits =
+            match buf[7] {
+                0x00 => Ok(DataBits::Bits5),
+                0x01 => Ok(DataBits::Bits6),
+                0x02 => Ok(DataBits::Bits7),
+                0x03 => Ok(DataBits::Bits8),
+                _ => Err("Unknown data bits mode"),
+            }?;
+        let stop_bits =
+            match buf[8] {
+                0x00 => Ok(StopBits::Short),
+                0x01 => Ok(StopBits::Long),
+                _ => Err("Unknown stop bits mode"),
+            }?;
+        let config = UartConfig {
+            baud_rate,
+            parity,
+            flow_control,
+            data_bits,
+            stop_bits,
+        };
+
+        Ok(config)
+    }
+
+    /// Empties receiving and/or transmitting FIFO buffers.
+    ///
+    /// Flushes receiving FIFO buffer if `rx` is `true`.
+    ///
+    /// Flushes transmitting FIFO buffer if `tx` is `true`.
+    pub fn flush_fifos(&self, rx: bool, tx: bool) -> Result<(), Error> {
+        let mut buf: [u8; FEATURE_REPORT_LENGTH] = [0; FEATURE_REPORT_LENGTH];
+
+        buf[0] = PURGE_FIFOS;
+        if rx {
+            buf[1] = buf[1] | PURGE_RECEIVE_MASK;
+        }
+        if tx {
+            buf[1] = buf[1] | PURGE_TRANSMIT_MASK;
+        }
+        self.device.send_feature_report(&buf)?;
+
+        Ok(())
+    }
+
+    /// Transmit `data`.
+    pub fn write(&self, data: &[u8]) -> Result<(), Error> {
+        let mut buf: [u8; INTERRUPT_REPORT_LENGTH];
+
+        let start_time = Instant::now();
+        for chunk in data.chunks(INTERRUPT_REPORT_LENGTH - 1) {
+            if start_time.elapsed() > self.write_timeout {
+                return Err("Transmit timed out");
+            }
+            buf = [0; INTERRUPT_REPORT_LENGTH];
+            buf[0] = chunk.len() as u8;
+            buf[1..chunk.len()+1].copy_from_slice(chunk);
+            self.device.write(&buf)?;
+        }
+
+        Ok(())
+    }
+
+    /// Receive `data` and returns a number of read bytes.
+    pub fn read(&self, data: &mut [u8]) -> Result<usize, Error> {
+        let mut buf: [u8; INTERRUPT_REPORT_LENGTH];
+        let start_time = Instant::now();
+        let mut num_bytes_read = 0;
+        while start_time.elapsed() < self.read_timeout {
+            let data_free = data.len() - num_bytes_read;
+            if data_free > 0 {
+                buf = [0; INTERRUPT_REPORT_LENGTH];
+                let buf_size = min(data_free, INTERRUPT_REPORT_LENGTH - 1) + 1;
+                if  self.device.read_timeout(&mut buf[0..buf_size], 1)? > 0 {
+                    let report_len: usize = buf[0] as usize;
+                    data[num_bytes_read..(num_bytes_read + report_len)].copy_from_slice(&buf[1..(report_len + 1)]);
+                    num_bytes_read = num_bytes_read + report_len;
+                } else {
+                    continue;
+                }
+            } else {
+                break;
+            }
+        }
+        Ok(num_bytes_read)
+    }
+}
