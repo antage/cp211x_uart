@@ -235,7 +235,7 @@ impl<'a> HidUart<'a> {
         buf[0] = GETSET_UART_CONFIG;
         self.device.get_feature_report(&mut buf)?;
 
-        let baud_rate: u32 = (buf[1] as u32) << 24 | (buf[2] as u32) << 16 | (buf[3] as u32) << 8 | buf[4] as u32;
+        let baud_rate: u32 = u32::from(buf[1]) << 24 | u32::from(buf[2]) << 16 | u32::from(buf[3]) << 8 | u32::from(buf[4]);
         let parity =
             match buf[5] {
                 0x00 => Ok(Parity::None),
@@ -286,10 +286,10 @@ impl<'a> HidUart<'a> {
 
         buf[0] = PURGE_FIFOS;
         if rx {
-            buf[1] = buf[1] | PURGE_RECEIVE_MASK;
+            buf[1] |= PURGE_RECEIVE_MASK;
         }
         if tx {
-            buf[1] = buf[1] | PURGE_TRANSMIT_MASK;
+            buf[1] |= PURGE_TRANSMIT_MASK;
         }
         self.device.send_feature_report(&buf)?;
 
@@ -327,7 +327,7 @@ impl<'a> HidUart<'a> {
                 if  self.device.read_timeout(&mut buf[0..buf_size], 1)? > 0 {
                     let report_len: usize = buf[0] as usize;
                     data[num_bytes_read..(num_bytes_read + report_len)].copy_from_slice(&buf[1..(report_len + 1)]);
-                    num_bytes_read = num_bytes_read + report_len;
+                    num_bytes_read += report_len;
                 } else {
                     continue;
                 }
