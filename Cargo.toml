@@ -1,6 +1,6 @@
 [package]
 name = "cp211x_uart"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Anton Ageev <antage@gmail.com>"]
 description = "HID-to-UART driver for CP2110/CP2114 chipset"
 repository = "https://github.com/antage/cp211x_uart"

@@ -329,7 +329,7 @@ impl<'a> HidUart<'a> {
                     data[num_bytes_read..(num_bytes_read + report_len)].copy_from_slice(&buf[1..(report_len + 1)]);
                     num_bytes_read += report_len;
                 } else {
-                    continue;
+                    break;
                 }
             } else {
                 break;
