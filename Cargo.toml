@@ -7,7 +7,6 @@ repository = "https://github.com/antage/cp211x_uart"
 readme = "README.md"
 documentation = "https://docs.rs/cp211x_uart"
 license = "MIT"
-license-file = "LICENSE"
 keywords = ["uart", "cp2110", "cp2114"]
 categories = ["hardware-support"]
 include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
