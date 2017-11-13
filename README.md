@@ -7,7 +7,14 @@ It is wrapper around `hidapi::HidDevice` intrinsically.
 
 See [documentation](https://docs.rs/cp211x_uart) for details.
 
-# Usage
+## Building
+
+```
+$ sudo apt-get install libusb-1.0-0-dev
+$ cargo build
+```
+
+## Usage
 
 ``` rust
 extern crate hidapi;
@@ -39,3 +46,9 @@ fn main() {
     uart.read(&mut buf).unwrap();
 }
 ```
+
+## License
+
+This library licensed under the following:
+
+* MIT License ([LICENSE](LICENSE) or https://opensource.org/licenses/MIT)
