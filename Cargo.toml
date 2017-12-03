@@ -13,3 +13,6 @@ include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE"]
 
 [dependencies]
 hidapi = "^0.4.1"
+
+[badges]
+travis-ci = { repository = "antage/cp211x_uart" }
