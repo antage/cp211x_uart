@@ -6,4 +6,4 @@ rust:
   - nightly
 before_install:
   - sudo apt-get -qq update
-  - sudo apt-get install -y libhidapi-dev
+  - sudo apt-get install -y libhidapi-dev libudev-dev

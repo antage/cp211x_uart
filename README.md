@@ -12,7 +12,7 @@ See [documentation](https://docs.rs/cp211x_uart) for details.
 Linux:
 
 ```
-$ sudo apt-get install libhidapi-dev
+$ sudo apt-get install libudev-dev libhidapi-dev
 $ cargo build
 ```
 
