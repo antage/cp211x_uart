@@ -116,7 +116,7 @@ impl Default for UartConfig {
     }
 }
 
-/// Wrapper around `HidDevice` to provide UART control.
+/// Wrapper around `hid::Handle` to provide UART control.
 pub struct HidUart {
     handle: hid::Handle,
     read_timeout: Duration,
@@ -137,9 +137,9 @@ fn set_uart_enable(handle: &mut hid::Handle, enable: bool) -> Result<()> {
 }
 
 impl HidUart {
-    /// Returns a new instance of `HidUart` from `hid::Device`.
+    /// Returns a new instance of `HidUart` from `hid::Handle`.
     ///
-    /// The `HidUart` instance enables UART automatically.
+    /// The instance enables UART automatically.
     pub fn new(handle: hid::Handle) -> Result<HidUart> {
         let mut instance = HidUart {
             handle,
