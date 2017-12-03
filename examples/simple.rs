@@ -1,24 +1,3 @@
-# cp211x_uart
-
-[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://docs.rs/cp211x_uart) [![Build Status](https://travis-ci.org/antage/cp211x_uart.svg?branch=master)](https://travis-ci.org/antage/cp211x_uart)
-
-HID-to-UART driver for CP2110/CP2114 chipset.
-It is wrapper around `hid::Handle` intrinsically.
-
-See [documentation](https://docs.rs/cp211x_uart) for details.
-
-## Building
-
-Linux:
-
-```
-$ sudo apt-get install libhidapi-dev
-$ cargo build
-```
-
-## Usage
-
-``` rust
 extern crate hid;
 extern crate cp211x_uart;
 
@@ -48,20 +27,14 @@ fn run() -> Result<(), cp211x_uart::Error> {
         let mut buf: [u8; 256] = [0; 256];
         uart.read(&mut buf)?;
     }
+    Ok(())
 }
 
 fn main() {
     match run() {
-        Ok() => {}
         Err(err) => {
             eprintln!("ERROR: {}", err);
         }
+        _ => {}
     }
 }
-```
-
-## License
-
-This library licensed under the following:
-
-* MIT License ([LICENSE](LICENSE) or https://opensource.org/licenses/MIT)
