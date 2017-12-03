@@ -1,6 +1,6 @@
 # cp211x_uart
 
-[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://docs.rs/cp211x_uart)
+[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://docs.rs/cp211x_uart) [![Build Status](https://travis-ci.org/antage/cp211x_uart.svg?branch=master)](https://travis-ci.org/antage/cp211x_uart)
 
 HID-to-UART driver for CP2110/CP2114 chipset.
 It is wrapper around `hidapi::HidDevice` intrinsically.
