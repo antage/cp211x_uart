@@ -4,6 +4,8 @@ rust:
   - stable
   - beta
   - nightly
-before_install:
-  - sudo apt-get -qq update
-  - sudo apt-get install -qq libhidapi-dev libudev-dev
+addons:
+  apt:
+    packages:
+      - libudev-dev
+      - libhidapi-dev
