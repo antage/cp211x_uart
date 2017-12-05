@@ -1,6 +1,6 @@
 # cp211x_uart
 
-[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://docs.rs/cp211x_uart) [![Build Status](https://travis-ci.org/antage/cp211x_uart.svg?branch=master)](https://travis-ci.org/antage/cp211x_uart)
+[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://docs.rs/cp211x_uart) [![Build Status](https://travis-ci.org/antage/cp211x_uart.svg?branch=master)](https://travis-ci.org/antage/cp211x_uart) [![Build status](https://ci.appveyor.com/api/projects/status/mdiv626vqq496tuu?svg=true)](https://ci.appveyor.com/project/antage/cp211x-uart)
 
 HID-to-UART driver for CP2110/CP2114 chipset.
 It is wrapper around `hid::Handle` intrinsically.

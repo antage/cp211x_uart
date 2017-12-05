@@ -22,3 +22,4 @@ build = ["static", "hid/build"]
 
 [badges]
 travis-ci = { repository = "antage/cp211x_uart" }
+appveyor = { repository = "antage/cp211x_uart", service = "github" }
