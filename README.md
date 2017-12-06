@@ -9,14 +9,14 @@ See [documentation](https://docs.rs/cp211x_uart) for details.
 
 ## Building
 
-Linux:
+### Linux
 
 ```
 $ sudo apt-get install libudev-dev libhidapi-dev
 $ cargo build
 ```
 
-Windows:
+### Windows
 
 Requirements:
 
