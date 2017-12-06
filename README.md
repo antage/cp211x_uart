@@ -16,6 +16,17 @@ $ sudo apt-get install libudev-dev libhidapi-dev
 $ cargo build
 ```
 
+Windows:
+
+Requirements:
+
+* Rust target `*-pc-windows-msvc`: VisualStudio 2015.
+* Rust target `*-pc-windows-gnu`: MinGW
+
+```
+$ cargo build --features build
+```
+
 ## Usage
 
 ``` rust
