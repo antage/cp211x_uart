@@ -22,6 +22,7 @@ install:
   - cargo --version
   - rustup --version
 cache:
+  - '%USERPROFILE%\.rustup'
   - '%USERPROFILE%\.cargo'
   - target
 build: off
