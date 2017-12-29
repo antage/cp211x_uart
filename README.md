@@ -1,6 +1,6 @@
 # cp211x_uart
 
-[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://docs.rs/cp211x_uart) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT) [![Build Status](https://travis-ci.org/antage/cp211x_uart.svg?branch=master)](https://travis-ci.org/antage/cp211x_uart) [![Build status](https://ci.appveyor.com/api/projects/status/mdiv626vqq496tuu?svg=true)](https://ci.appveyor.com/project/antage/cp211x-uart)
+[![Documentation](https://docs.rs/cp211x_uart/badge.svg)](https://docs.rs/cp211x_uart) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT) [![Build Status](https://travis-ci.org/antage/cp211x_uart.svg?branch=master)](https://travis-ci.org/antage/cp211x_uart)
 
 HID-to-UART driver for CP2110/CP2114 chipset.
 It is wrapper around `hid::Handle` intrinsically.
@@ -14,17 +14,6 @@ See [documentation](https://docs.rs/cp211x_uart) for details.
 ```
 $ sudo apt-get install libudev-dev libhidapi-dev
 $ cargo build
-```
-
-### Windows
-
-Requirements:
-
-* Rust target `*-pc-windows-msvc`: VisualStudio 2015.
-* Rust target `*-pc-windows-gnu`: MinGW
-
-```
-$ cargo build --features build
 ```
 
 ## Usage
