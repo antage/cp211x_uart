@@ -1,6 +1,6 @@
 [package]
 name = "cp211x_uart"
-version = "0.2.1"
+version = "0.2.2"
 authors = ["Anton Ageev <antage@gmail.com>"]
 description = "HID-to-UART driver for CP2110/CP2114 chipset"
 repository = "https://github.com/antage/cp211x_uart"
@@ -17,4 +17,3 @@ error-chain = "^0.11.0"
 
 [badges]
 travis-ci = { repository = "antage/cp211x_uart" }
-appveyor = { repository = "antage/cp211x_uart", service = "github" }
