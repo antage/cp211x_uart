@@ -121,6 +121,9 @@ pub struct HidUart {
     handle: hidapi::HidDevice,
     read_timeout: Duration,
     write_timeout: Duration,
+    read_buffer_start: u8,
+    read_buffer_left: u8,
+    read_buffer: [u8; INTERRUPT_REPORT_LENGTH],
 }
 
 fn set_uart_enable(handle: &mut hidapi::HidDevice, enable: bool) -> Result<()> {
@@ -145,6 +148,9 @@ impl HidUart {
             handle,
             read_timeout: Duration::from_millis(1000),
             write_timeout: Duration::from_millis(1000),
+            read_buffer: [0; INTERRUPT_REPORT_LENGTH],
+            read_buffer_start: 0,
+            read_buffer_left: 0,
         };
         instance.enable()?;
         Ok(instance)
@@ -291,6 +297,10 @@ impl HidUart {
         buf[0] = PURGE_FIFOS;
         if rx {
             buf[1] |= PURGE_RECEIVE_MASK;
+
+            // also dump any buffered data
+            self.read_buffer_start = 0;
+            self.read_buffer_left = 0;
         }
         if tx {
             buf[1] |= PURGE_TRANSMIT_MASK;
@@ -320,21 +330,47 @@ impl HidUart {
 
     /// Receive `data` and returns a number of read bytes.
     pub fn read(&mut self, data: &mut [u8]) -> Result<usize> {
+        let mut num_bytes_read = 0;
+
+        // drain any buffered data
+        if self.read_buffer_left > 0 {
+            num_bytes_read = min(data.len(), self.read_buffer_left as usize);
+            let start = self.read_buffer_start as usize;
+            let end = start + num_bytes_read;
+            let source_buf = &self.read_buffer[start..end];
+            data[0..num_bytes_read].copy_from_slice(&source_buf);
+            self.read_buffer_left -= num_bytes_read as u8;
+            if self.read_buffer_left == 0 {
+                self.read_buffer_start = 0;
+            } else {
+                self.read_buffer_start += num_bytes_read as u8;
+            }
+        }
+
+        // read from usb
         let mut buf: [u8; INTERRUPT_REPORT_LENGTH];
         let start_time = Instant::now();
-        let mut num_bytes_read = 0;
         loop {
             let data_free = data.len() - num_bytes_read;
             if data_free > 0 {
                 buf = [0; INTERRUPT_REPORT_LENGTH];
-                let buf_size = min(data_free, INTERRUPT_REPORT_LENGTH - 1) + 1;
-                let total_read = self.handle.read_timeout(&mut buf[0..buf_size], 1)?;
+                let total_read = self.handle.read_timeout(&mut buf, 1)?;
                 if total_read != 0 {
                     let report_len: usize = buf[0] as usize;
-                    data[num_bytes_read..(num_bytes_read + report_len)].copy_from_slice(&buf[1..(report_len + 1)]);
-                    num_bytes_read += report_len;
-                } else {
-                    break;
+                    let copy_len = min(report_len, data_free);
+                    data[num_bytes_read..(num_bytes_read + copy_len)].copy_from_slice(&buf[1..(copy_len + 1)]);
+                    num_bytes_read += copy_len;
+
+                    // buffer the left overs
+                    if copy_len < report_len {
+                        let left = report_len - copy_len;
+                        let start = 1 + copy_len;
+                        let end = start + left;
+                        self.read_buffer[0..left].copy_from_slice(&buf[start..end]);
+                        self.read_buffer_start = 0;
+                        self.read_buffer_left = left as u8;
+                        return Ok(num_bytes_read)
+                    }
                 }
             } else {
                 break;
