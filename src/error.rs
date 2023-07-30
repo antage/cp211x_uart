@@ -1,6 +1,6 @@
 error_chain! {
     foreign_links {
-        HidError(::hid::Error);
+        HidError(::hidapi::HidError);
     }
 
     errors {

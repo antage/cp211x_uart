@@ -3,7 +3,7 @@
 //! See more information [here][1].
 //! [1]: https://www.silabs.com/products/interface/usb-bridges/classic-usb-bridges/device.cp2110-f01-gm
 
-extern crate hid;
+extern crate hidapi;
 #[macro_use] extern crate error_chain;
 
 use std::cmp::min;
@@ -116,14 +116,14 @@ impl Default for UartConfig {
     }
 }
 
-/// Wrapper around `hid::Handle` to provide UART control.
+/// Wrapper around `hidapi::HidDevice` to provide UART control.
 pub struct HidUart {
-    handle: hid::Handle,
+    handle: hidapi::HidDevice,
     read_timeout: Duration,
     write_timeout: Duration,
 }
 
-fn set_uart_enable(handle: &mut hid::Handle, enable: bool) -> Result<()> {
+fn set_uart_enable(handle: &mut hidapi::HidDevice, enable: bool) -> Result<()> {
     let mut buf: [u8; FEATURE_REPORT_LENGTH] = [0; FEATURE_REPORT_LENGTH];
 
     buf[0] = GETSET_UART_ENABLE;
@@ -132,15 +132,15 @@ fn set_uart_enable(handle: &mut hid::Handle, enable: bool) -> Result<()> {
     } else {
         buf[1] = 0x00;
     }
-    handle.feature().send(&buf[..])?;
+    handle.send_feature_report(&buf[..])?;
     Ok(())
 }
 
 impl HidUart {
-    /// Returns a new instance of `HidUart` from `hid::Handle`.
+    /// Returns a new instance of `HidUart` from `hidapi::HidDevice`.
     ///
     /// The instance enables UART automatically.
-    pub fn new(handle: hid::Handle) -> Result<HidUart> {
+    pub fn new(handle: hidapi::HidDevice) -> Result<HidUart> {
         let mut instance = HidUart {
             handle,
             read_timeout: Duration::from_millis(1000),
@@ -185,7 +185,7 @@ impl HidUart {
         let mut buf: [u8; FEATURE_REPORT_LENGTH] = [0; FEATURE_REPORT_LENGTH];
 
         buf[0] = GETSET_UART_ENABLE;
-        self.handle.feature().get(&mut buf[..])?;
+        self.handle.get_feature_report(&mut buf[..])?;
         if buf[1] == 0x00 {
             Ok(false)
         } else {
@@ -228,7 +228,7 @@ impl HidUart {
                 StopBits::Long => 0x01,
             };
 
-        self.handle.feature().send(&buf[..])?;
+        self.handle.send_feature_report(&buf[..])?;
         Ok(())
     }
 
@@ -237,7 +237,7 @@ impl HidUart {
         let mut buf: [u8; FEATURE_REPORT_LENGTH] = [0; FEATURE_REPORT_LENGTH];
 
         buf[0] = GETSET_UART_CONFIG;
-        self.handle.feature().get(&mut buf[..])?;
+        self.handle.get_feature_report(&mut buf[..])?;
 
         let baud_rate: u32 = u32::from(buf[1]) << 24 | u32::from(buf[2]) << 16 | u32::from(buf[3]) << 8 | u32::from(buf[4]);
         let parity =
@@ -295,7 +295,7 @@ impl HidUart {
         if tx {
             buf[1] |= PURGE_TRANSMIT_MASK;
         }
-        self.handle.feature().send(&buf[..])?;
+        self.handle.send_feature_report(&buf[..])?;
 
         Ok(())
     }
@@ -303,8 +303,6 @@ impl HidUart {
     /// Transmit `data`.
     pub fn write(&mut self, data: &[u8]) -> Result<()> {
         let mut buf: [u8; INTERRUPT_REPORT_LENGTH];
-
-        let mut data_handle = self.handle.data();
 
         let start_time = Instant::now();
         for chunk in data.chunks(INTERRUPT_REPORT_LENGTH - 1) {
@@ -314,7 +312,7 @@ impl HidUart {
             buf = [0; INTERRUPT_REPORT_LENGTH];
             buf[0] = chunk.len() as u8;
             buf[1..chunk.len()+1].copy_from_slice(chunk);
-            data_handle.write(&buf[..])?;
+            self.handle.write(&buf[..])?;
         }
 
         Ok(())
@@ -325,13 +323,13 @@ impl HidUart {
         let mut buf: [u8; INTERRUPT_REPORT_LENGTH];
         let start_time = Instant::now();
         let mut num_bytes_read = 0;
-        let mut data_handle = self.handle.data();
         while start_time.elapsed() < self.read_timeout {
             let data_free = data.len() - num_bytes_read;
             if data_free > 0 {
                 buf = [0; INTERRUPT_REPORT_LENGTH];
                 let buf_size = min(data_free, INTERRUPT_REPORT_LENGTH - 1) + 1;
-                if  let Some(_) = data_handle.read(&mut buf[0..buf_size], Duration::from_millis(1))? {
+                let total_read = self.handle.read_timeout(&mut buf[0..buf_size], 1)?;
+                if total_read != 0 {
                     let report_len: usize = buf[0] as usize;
                     data[num_bytes_read..(num_bytes_read + report_len)].copy_from_slice(&buf[1..(report_len + 1)]);
                     num_bytes_read += report_len;
