@@ -306,13 +306,13 @@ impl HidUart {
 
         let start_time = Instant::now();
         for chunk in data.chunks(INTERRUPT_REPORT_LENGTH - 1) {
-            if start_time.elapsed() > self.write_timeout {
-                return Err(ErrorKind::WriteTimeout.into());
-            }
             buf = [0; INTERRUPT_REPORT_LENGTH];
             buf[0] = chunk.len() as u8;
             buf[1..chunk.len()+1].copy_from_slice(chunk);
             self.handle.write(&buf[..])?;
+            if start_time.elapsed() > self.write_timeout {
+                return Err(ErrorKind::WriteTimeout.into());
+            }
         }
 
         Ok(())
@@ -323,7 +323,7 @@ impl HidUart {
         let mut buf: [u8; INTERRUPT_REPORT_LENGTH];
         let start_time = Instant::now();
         let mut num_bytes_read = 0;
-        while start_time.elapsed() < self.read_timeout {
+        loop {
             let data_free = data.len() - num_bytes_read;
             if data_free > 0 {
                 buf = [0; INTERRUPT_REPORT_LENGTH];
@@ -339,7 +339,11 @@ impl HidUart {
             } else {
                 break;
             }
+            if start_time.elapsed() < self.read_timeout {
+                break;
+            }
         }
+
         Ok(num_bytes_read)
     }
 }
