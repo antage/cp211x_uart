@@ -375,7 +375,7 @@ impl HidUart {
             } else {
                 break;
             }
-            if start_time.elapsed() < self.read_timeout {
+            if start_time.elapsed() > self.read_timeout {
                 break;
             }
         }
