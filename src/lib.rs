@@ -4,25 +4,26 @@
 //! [1]: https://www.silabs.com/products/interface/usb-bridges/classic-usb-bridges/device.cp2110-f01-gm
 
 extern crate hidapi;
-#[macro_use] extern crate error_chain;
+#[macro_use]
+extern crate error_chain;
 
 use std::cmp::min;
 use std::default::Default;
 use std::time::{Duration, Instant};
 
 mod error;
-use error::*;
 pub use error::Error;
+use error::*;
 
 const FEATURE_REPORT_LENGTH: usize = 64;
 const INTERRUPT_REPORT_LENGTH: usize = 64;
 
 const GETSET_UART_ENABLE: u8 = 0x41; // Get Set Receive Status
-const PURGE_FIFOS: u8        = 0x43; // Purge FIFOs
+const PURGE_FIFOS: u8 = 0x43; // Purge FIFOs
 const GETSET_UART_CONFIG: u8 = 0x50; // Get Set UART Config
 
 const PURGE_TRANSMIT_MASK: u8 = 0x01;
-const PURGE_RECEIVE_MASK: u8  = 0x02;
+const PURGE_RECEIVE_MASK: u8 = 0x02;
 
 /// The number of data bits in [UART configuration](struct.UartConfig.html).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -121,9 +122,7 @@ pub struct HidUart {
     handle: hidapi::HidDevice,
     read_timeout: Duration,
     write_timeout: Duration,
-    read_buffer_start: u8,
-    read_buffer_left: u8,
-    read_buffer: [u8; INTERRUPT_REPORT_LENGTH],
+    rx_buffer: RxBuffer,
 }
 
 fn set_uart_enable(handle: &mut hidapi::HidDevice, enable: bool) -> Result<()> {
@@ -148,9 +147,7 @@ impl HidUart {
             handle,
             read_timeout: Duration::from_millis(1000),
             write_timeout: Duration::from_millis(1000),
-            read_buffer: [0; INTERRUPT_REPORT_LENGTH],
-            read_buffer_start: 0,
-            read_buffer_left: 0,
+            rx_buffer: RxBuffer::new(),
         };
         instance.enable()?;
         Ok(instance)
@@ -208,31 +205,27 @@ impl HidUart {
         buf[2] = ((config.baud_rate >> 16) & 0xFF) as u8;
         buf[3] = ((config.baud_rate >> 8) & 0xFF) as u8;
         buf[4] = (config.baud_rate & 0xFF) as u8;
-        buf[5] =
-            match config.parity {
-                Parity::None => 0x00,
-                Parity::Odd => 0x01,
-                Parity::Even => 0x02,
-                Parity::Mark => 0x03,
-                Parity::Space => 0x04,
-            };
-        buf[6] =
-            match config.flow_control {
-                FlowControl::None => 0x00,
-                FlowControl::RtsCts => 0x01,
-            };
-        buf[7] =
-            match config.data_bits {
-                DataBits::Bits5 => 0x00,
-                DataBits::Bits6 => 0x01,
-                DataBits::Bits7 => 0x02,
-                DataBits::Bits8 => 0x03,
-            };
-        buf[8] =
-            match config.stop_bits {
-                StopBits::Short => 0x00,
-                StopBits::Long => 0x01,
-            };
+        buf[5] = match config.parity {
+            Parity::None => 0x00,
+            Parity::Odd => 0x01,
+            Parity::Even => 0x02,
+            Parity::Mark => 0x03,
+            Parity::Space => 0x04,
+        };
+        buf[6] = match config.flow_control {
+            FlowControl::None => 0x00,
+            FlowControl::RtsCts => 0x01,
+        };
+        buf[7] = match config.data_bits {
+            DataBits::Bits5 => 0x00,
+            DataBits::Bits6 => 0x01,
+            DataBits::Bits7 => 0x02,
+            DataBits::Bits8 => 0x03,
+        };
+        buf[8] = match config.stop_bits {
+            StopBits::Short => 0x00,
+            StopBits::Long => 0x01,
+        };
 
         self.handle.send_feature_report(&buf[..])?;
         Ok(())
@@ -245,36 +238,35 @@ impl HidUart {
         buf[0] = GETSET_UART_CONFIG;
         self.handle.get_feature_report(&mut buf[..])?;
 
-        let baud_rate: u32 = u32::from(buf[1]) << 24 | u32::from(buf[2]) << 16 | u32::from(buf[3]) << 8 | u32::from(buf[4]);
-        let parity =
-            match buf[5] {
-                0x00 => Ok(Parity::None),
-                0x01 => Ok(Parity::Odd),
-                0x02 => Ok(Parity::Even),
-                0x03 => Ok(Parity::Mark),
-                0x04 => Ok(Parity::Space),
-                _ => Err("Unknown parity mode"),
-            }?;
-        let flow_control =
-            match buf[6] {
-                0x00 => Ok(FlowControl::None),
-                0x01 => Ok(FlowControl::RtsCts),
-                _ => Err("Unknown flow control mode"),
-            }?;
-        let data_bits =
-            match buf[7] {
-                0x00 => Ok(DataBits::Bits5),
-                0x01 => Ok(DataBits::Bits6),
-                0x02 => Ok(DataBits::Bits7),
-                0x03 => Ok(DataBits::Bits8),
-                _ => Err("Unknown data bits mode"),
-            }?;
-        let stop_bits =
-            match buf[8] {
-                0x00 => Ok(StopBits::Short),
-                0x01 => Ok(StopBits::Long),
-                _ => Err("Unknown stop bits mode"),
-            }?;
+        let baud_rate: u32 = u32::from(buf[1]) << 24
+            | u32::from(buf[2]) << 16
+            | u32::from(buf[3]) << 8
+            | u32::from(buf[4]);
+        let parity = match buf[5] {
+            0x00 => Ok(Parity::None),
+            0x01 => Ok(Parity::Odd),
+            0x02 => Ok(Parity::Even),
+            0x03 => Ok(Parity::Mark),
+            0x04 => Ok(Parity::Space),
+            _ => Err("Unknown parity mode"),
+        }?;
+        let flow_control = match buf[6] {
+            0x00 => Ok(FlowControl::None),
+            0x01 => Ok(FlowControl::RtsCts),
+            _ => Err("Unknown flow control mode"),
+        }?;
+        let data_bits = match buf[7] {
+            0x00 => Ok(DataBits::Bits5),
+            0x01 => Ok(DataBits::Bits6),
+            0x02 => Ok(DataBits::Bits7),
+            0x03 => Ok(DataBits::Bits8),
+            _ => Err("Unknown data bits mode"),
+        }?;
+        let stop_bits = match buf[8] {
+            0x00 => Ok(StopBits::Short),
+            0x01 => Ok(StopBits::Long),
+            _ => Err("Unknown stop bits mode"),
+        }?;
         let config = UartConfig {
             baud_rate,
             parity,
@@ -299,8 +291,7 @@ impl HidUart {
             buf[1] |= PURGE_RECEIVE_MASK;
 
             // also dump any buffered data
-            self.read_buffer_start = 0;
-            self.read_buffer_left = 0;
+            self.rx_buffer.clear();
         }
         if tx {
             buf[1] |= PURGE_TRANSMIT_MASK;
@@ -318,7 +309,7 @@ impl HidUart {
         for chunk in data.chunks(INTERRUPT_REPORT_LENGTH - 1) {
             buf = [0; INTERRUPT_REPORT_LENGTH];
             buf[0] = chunk.len() as u8;
-            buf[1..chunk.len()+1].copy_from_slice(chunk);
+            buf[1..chunk.len() + 1].copy_from_slice(chunk);
             self.handle.write(&buf[..])?;
             if start_time.elapsed() > self.write_timeout {
                 return Err(ErrorKind::WriteTimeout.into());
@@ -330,22 +321,8 @@ impl HidUart {
 
     /// Receive `data` and returns a number of read bytes.
     pub fn read(&mut self, data: &mut [u8]) -> Result<usize> {
-        let mut num_bytes_read = 0;
-
         // drain any buffered data
-        if self.read_buffer_left > 0 {
-            num_bytes_read = min(data.len(), self.read_buffer_left as usize);
-            let start = self.read_buffer_start as usize;
-            let end = start + num_bytes_read;
-            let source_buf = &self.read_buffer[start..end];
-            data[0..num_bytes_read].copy_from_slice(&source_buf);
-            self.read_buffer_left -= num_bytes_read as u8;
-            if self.read_buffer_left == 0 {
-                self.read_buffer_start = 0;
-            } else {
-                self.read_buffer_start += num_bytes_read as u8;
-            }
-        }
+        let mut num_bytes_read = self.rx_buffer.read(data);
 
         // read from usb
         let mut buf: [u8; INTERRUPT_REPORT_LENGTH];
@@ -358,7 +335,8 @@ impl HidUart {
                 if total_read != 0 {
                     let report_len: usize = buf[0] as usize;
                     let copy_len = min(report_len, data_free);
-                    data[num_bytes_read..(num_bytes_read + copy_len)].copy_from_slice(&buf[1..(copy_len + 1)]);
+                    data[num_bytes_read..(num_bytes_read + copy_len)]
+                        .copy_from_slice(&buf[1..(copy_len + 1)]);
                     num_bytes_read += copy_len;
 
                     // buffer the left overs
@@ -366,10 +344,10 @@ impl HidUart {
                         let left = report_len - copy_len;
                         let start = 1 + copy_len;
                         let end = start + left;
-                        self.read_buffer[0..left].copy_from_slice(&buf[start..end]);
-                        self.read_buffer_start = 0;
-                        self.read_buffer_left = left as u8;
-                        return Ok(num_bytes_read)
+
+                        self.rx_buffer.write(&buf[start..end]);
+
+                        return Ok(num_bytes_read);
                     }
                 }
             } else {
@@ -381,5 +359,56 @@ impl HidUart {
         }
 
         Ok(num_bytes_read)
+    }
+}
+
+struct RxBuffer {
+    start: u8,
+    len: u8,
+    data: [u8; INTERRUPT_REPORT_LENGTH],
+}
+
+impl RxBuffer {
+    fn new() -> Self {
+        Self {
+            start: 0,
+            len: 0,
+            data: [0; INTERRUPT_REPORT_LENGTH],
+        }
+    }
+
+    fn read(&mut self, dest: &mut [u8]) -> usize {
+        if self.len == 0 {
+            return 0;
+        }
+
+        let num_bytes_read = min(dest.len(), self.len as usize);
+        let start = self.start as usize;
+        let end = start + num_bytes_read;
+        let source_buf = &self.data[start..end];
+        dest[0..num_bytes_read].copy_from_slice(&source_buf);
+        self.len -= num_bytes_read as u8;
+        if self.len == 0 {
+            self.start = 0;
+        } else {
+            self.start += num_bytes_read as u8;
+        }
+
+        return num_bytes_read;
+    }
+
+    fn write(&mut self, source: &[u8]) {
+        if source.len() == 0 {
+            return;
+        }
+
+        self.data[0..source.len()].copy_from_slice(&source);
+        self.start = 0;
+        self.len = source.len() as u8;
+    }
+
+    fn clear(&mut self) {
+        self.start = 0;
+        self.len = 0;
     }
 }
