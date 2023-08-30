@@ -1,13 +1,15 @@
-extern crate hid;
 extern crate cp211x_uart;
+extern crate hidapi;
 
+use cp211x_uart::{DataBits, FlowControl, HidUart, Parity, StopBits, UartConfig};
 use std::time::Duration;
-use cp211x_uart::{HidUart, UartConfig, DataBits, StopBits, Parity, FlowControl};
 
 fn run() -> Result<(), cp211x_uart::Error> {
-    let manager = hid::init()?;
-    for device in manager.find(Some(0x10C4), Some(0xEA80)) {
-        let handle = device.open()?;
+    let manager = hidapi::HidApi::new()?;
+    for device_info in manager.device_list().filter(|device_info| {
+        device_info.vendor_id() == 0x10C4 && device_info.product_id() == 0xEA80
+    }) {
+        let handle = device_info.open_device(&manager)?;
         let mut uart = HidUart::new(handle)?;
 
         let config = UartConfig {
